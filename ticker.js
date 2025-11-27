@@ -1,5 +1,4 @@
 async function loadTicker() {
-  // Use YOUR Vercel API instead of Yahoo directly
   const url = 'https://financial-insider-ai.vercel.app/api/stocks';
   
   try {
@@ -11,19 +10,35 @@ async function loadTicker() {
     
     const data = await res.json();
     
+    console.log('API Response:', data); // Debug log
+    
     if (!data.quoteResponse || !data.quoteResponse.result) {
-      document.getElementById("ticker-bar").innerHTML = "Error loading data";
+      document.getElementById("ticker-bar").innerHTML = "Error: Invalid data format";
       return;
     }
     
     const items = data.quoteResponse.result;
+    
+    // Filter out items with missing data
+    const validItems = items.filter(item => 
+      item.regularMarketPrice !== null && 
+      item.regularMarketPrice !== undefined &&
+      item.regularMarketChangePercent !== null &&
+      item.regularMarketChangePercent !== undefined
+    );
+    
+    if (validItems.length === 0) {
+      document.getElementById("ticker-bar").innerHTML = "Error: No valid stock data";
+      return;
+    }
+    
     let html = "";
     
-    for (const item of items) {
+    for (const item of validItems) {
       const name = item.shortName || item.symbol;
       const price = item.regularMarketPrice;
-      const change = item.regularMarketChange;
-      const changePercent = item.regularMarketChangePercent;
+      const change = item.regularMarketChange || 0;
+      const changePercent = item.regularMarketChangePercent || 0;
       
       html += `
         <div class="ticker-item">
@@ -40,7 +55,7 @@ async function loadTicker() {
     
   } catch (err) {
     console.error('Ticker error:', err);
-    document.getElementById("ticker-bar").innerHTML = "Error loading data";
+    document.getElementById("ticker-bar").innerHTML = "Error: " + err.message;
   }
 }
 
