@@ -3,16 +3,23 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   try {
-    // Fetch Reuters business news RSS feed
-    const response = await fetch('https://feeds.reuters.com/reuters/businessNews');
-    const xml = await response.text();
+    // Use RSS2JSON service to fetch and parse the feed
+    const rssUrl = encodeURIComponent('https://feeds.reuters.com/reuters/businessNews');
+    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&api_key=YOUR_API_KEY&count=10`);
     
-    // Parse RSS feed
-    const items = parseRSS(xml);
+    if (!response.ok) {
+      throw new Error(`RSS fetch failed: ${response.status}`);
+    }
     
-    // Use Claude API to paraphrase descriptions
+    const data = await response.json();
+    
+    if (data.status !== 'ok') {
+      throw new Error('RSS parsing failed');
+    }
+    
+    // Process articles with AI paraphrasing
     const articles = await Promise.all(
-      items.slice(0, 10).map(async item => {
+      data.items.map(async item => {
         const summary = await paraphraseWithAI(item.description);
         
         return {
@@ -30,37 +37,18 @@ export default async function handler(req, res) {
     
   } catch (error) {
     console.error('News API Error:', error);
-    res.status(500).json({ error: 'Failed to fetch news' });
+    res.status(500).json({ error: 'Failed to fetch news', details: error.message });
   }
-}
-
-// Simple RSS parser
-function parseRSS(xml) {
-  const items = [];
-  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-  let match;
-  
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const itemXML = match[1];
-    
-    const title = itemXML.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1] || 
-                  itemXML.match(/<title>(.*?)<\/title>/)?.[1];
-    const link = itemXML.match(/<link>(.*?)<\/link>/)?.[1];
-    const description = itemXML.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/)?.[1] ||
-                       itemXML.match(/<description>(.*?)<\/description>/)?.[1];
-    const pubDate = itemXML.match(/<pubDate>(.*?)<\/pubDate>/)?.[1];
-    
-    if (title && link) {
-      items.push({ title, link, description: description || '', pubDate });
-    }
-  }
-  
-  return items;
 }
 
 // Use Claude API to paraphrase
 async function paraphraseWithAI(text) {
   try {
+    // Strip HTML tags first
+    const cleanText = text.replace(/<[^>]*>/g, '').trim();
+    
+    if (!cleanText) return 'No description available.';
+    
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -70,32 +58,29 @@ async function paraphraseWithAI(text) {
       },
       body: JSON.stringify({
         model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 150,
+        max_tokens: 100,
         messages: [{
           role: 'user',
-          content: `Paraphrase this news description into 1-2 concise sentences. Keep it factual and neutral. Remove any HTML tags:\n\n${text}`
+          content: `Rewrite this news headline/description in 1-2 sentences. Keep it factual and concise:\n\n${cleanText.substring(0, 500)}`
         }]
       })
     });
+    
+    if (!response.ok) {
+      throw new Error('AI API failed');
+    }
     
     const data = await response.json();
     return data.content[0].text;
     
   } catch (error) {
     console.error('AI paraphrase error:', error);
-    // Fallback: just strip HTML and truncate
-    return text.replace(/<[^>]*>/g, '').substring(0, 150) + '...';
+    // Fallback: just use first 150 chars
+    const clean = text.replace(/<[^>]*>/g, '').trim();
+    return clean.substring(0, 150) + (clean.length > 150 ? '...' : '');
   }
 }
 
 // Calculate time ago
 function getTimeAgo(dateString) {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now - date) / 1000);
-  
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-  return `${Math.floor(seconds / 86400)} days ago`;
-}
+  cons
