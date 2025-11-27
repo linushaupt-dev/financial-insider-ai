@@ -1,34 +1,18 @@
-<style>
-  #ticker-bar {
-    background: #f5f3ee;
-    border-bottom: 1px solid #d1cdc7;
-    display: flex;
-    gap: 30px;
-    padding: 10px 20px;
-    font-family: Georgia, serif;
-    font-size: 14px;
-    white-space: nowrap;
-    overflow-x: auto;
-  }
-  .ticker-item.up { color: #0a8f35; }
-  .ticker-item.down { color: #c40000; }
-</style>
-
-<div id="ticker-bar">
-  Loading stocks…
-</div>
-
-<script>
 async function loadTicker() {
-  const symbols = ["^GSPC", "^DJI", "QQQ", "^VIX", "AAPL", "MSFT"];
+  const symbols = ["SPY", "DIA", "QQQ", "VIX", "AAPL", "MSFT"];
   const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(",")}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
 
+    if (!data.quoteResponse || !data.quoteResponse.result) {
+      document.getElementById("ticker-bar").innerHTML = "Error loading data";
+      return;
+    }
+
     const items = data.quoteResponse.result.map(stock => {
-      const change = stock.regularMarketChangePercent || 0;
+      const change = stock.regularMarketChangePercent;
       const dir = change >= 0 ? "up" : "down";
       return `
         <div class="ticker-item ${dir}">
@@ -41,10 +25,9 @@ async function loadTicker() {
 
     document.getElementById("ticker-bar").innerHTML = items.join("");
   } catch (err) {
-    document.getElementById("ticker-bar").innerText = "Error loading data";
+    document.getElementById("ticker-bar").innerHTML = "Error loading data";
   }
 }
 
 loadTicker();
-setInterval(loadTicker, 60000); // refresh every 1 min
-</script>
+setInterval(loadTicker, 60000);
