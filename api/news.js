@@ -3,8 +3,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   try {
-    // Use RSS2JSON service to fetch and parse the feed
-    const rssUrl = encodeURIComponent('https://feeds.reuters.com/reuters/businessNews');
+    // Use a free RSS feed that works reliably - BBC Business
+    const rssUrl = encodeURIComponent('http://feeds.bbci.co.uk/news/business/rss.xml');
     const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&api_key=${process.env.RSS2JSON_API_KEY}&count=10`);
     
     if (!response.ok) {
@@ -14,7 +14,7 @@ export default async function handler(req, res) {
     const data = await response.json();
     
     if (data.status !== 'ok') {
-      throw new Error('RSS parsing failed');
+      throw new Error(`RSS parsing failed: ${data.message || 'Unknown error'}`);
     }
     
     // Process articles with AI paraphrasing
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
         return {
           headline: item.title,
           summary: summary,
-          source: 'Reuters',
+          source: 'BBC Business',
           link: item.link,
           date: item.pubDate,
           timeAgo: getTimeAgo(item.pubDate)
@@ -49,46 +49,4 @@ async function paraphraseWithAI(text) {
     
     if (!cleanText) return 'No description available.';
     
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 100,
-        messages: [{
-          role: 'user',
-          content: `Rewrite this news headline/description in 1-2 sentences. Keep it factual and concise:\n\n${cleanText.substring(0, 500)}`
-        }]
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('AI API failed');
-    }
-    
-    const data = await response.json();
-    return data.content[0].text;
-    
-  } catch (error) {
-    console.error('AI paraphrase error:', error);
-    // Fallback: just use first 150 chars
-    const clean = text.replace(/<[^>]*>/g, '').trim();
-    return clean.substring(0, 150) + (clean.length > 150 ? '...' : '');
-  }
-}
-
-// Calculate time ago
-function getTimeAgo(dateString) {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now - date) / 1000);
-  
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} hours ago`;
-  return `${Math.floor(seconds / 86400)} days ago`;
-}
+    const response = await fetch('h
