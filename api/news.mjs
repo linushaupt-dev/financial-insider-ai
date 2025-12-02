@@ -3,7 +3,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   try {
-    // Use a free RSS feed that works reliably - BBC Business
     const rssUrl = encodeURIComponent('http://feeds.bbci.co.uk/news/business/rss.xml');
     const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&api_key=${process.env.RSS2JSON_API_KEY}&count=10`);
     
@@ -17,7 +16,6 @@ export default async function handler(req, res) {
       throw new Error(`RSS parsing failed: ${data.message || 'Unknown error'}`);
     }
     
-    // Process articles with AI paraphrasing
     const articles = await Promise.all(
       data.items.map(async item => {
         const summary = await paraphraseWithAI(item.description);
@@ -41,12 +39,41 @@ export default async function handler(req, res) {
   }
 }
 
-// Use Claude API to paraphrase
 async function paraphraseWithAI(text) {
   try {
-    // Strip HTML tags first
     const cleanText = text.replace(/<[^>]*>/g, '').trim();
     
     if (!cleanText) return 'No description available.';
     
-    const response = await fetch('h
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 100,
+        messages: [{
+          role: 'user',
+          content: `Rewrite this news headline/description in 1-2 sentences. Keep it factual and concise:\n\n${cleanText.substring(0, 500)}`
+        }]
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('AI API failed');
+    }
+    
+    const data = await response.json();
+    return data.content[0].text;
+    
+  } catch (error) {
+    console.error('AI paraphrase error:', error);
+    const clean = text.replace(/<[^>]*>/g, '').trim();
+    return clean.substring(0, 150) + (clean.length > 150 ? '...' : '');
+  }
+}
+
+function getTimeAgo(dateS
