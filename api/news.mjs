@@ -9,32 +9,55 @@ function getTimeAgo(dateString) {
   return `${Math.floor(seconds / 86400)} days ago`;
 }
 
+async function fetchFromSource(sourceUrl, sourceName) {
+  try {
+    const rssUrl = encodeURIComponent(sourceUrl);
+    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&api_key=${process.env.RSS2JSON_API_KEY}&count=5`);
+    
+    if (!response.ok) return [];
+    
+    const data = await response.json();
+    
+    if (data.status !== 'ok') return [];
+    
+    return data.items.map(item => ({
+      headline: item.title,
+      summary: item.description.replace(/<[^>]*>/g, '').substring(0, 200),
+      source: sourceName,
+      link: item.link,
+      date: item.pubDate,
+      timeAgo: getTimeAgo(item.pubDate)
+    }));
+  } catch (error) {
+    console.error(`Error fetching ${sourceName}:`, error);
+    return [];
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   try {
-    const rssUrl = encodeURIComponent('http://feeds.bbci.co.uk/news/business/rss.xml');
-    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${rssUrl}&api_key=${process.env.RSS2JSON_API_KEY}&count=10`);
+    // Fetch from multiple sources
+    const sources = [
+      { url: 'http://feeds.bbci.co.uk/news/business/rss.xml', name: 'BBC Business' },
+      { url: 'https://feeds.reuters.com/reuters/businessNews', name: 'Reuters' },
+      { url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html', name: 'CNBC' },
+      { url: 'https://feeds.bloomberg.com/markets/news.rss', name: 'Bloomberg' }
+    ];
     
-    if (!response.ok) {
-      throw new Error(`RSS fetch failed: ${response.status}`);
-    }
+    // Fetch all sources in parallel
+    const allArticles = await Promise.all(
+      sources.map(source => fetchFromSource(source.url, source.name))
+    );
     
-    const data = await response.json();
-    
-    if (data.status !== 'ok') {
-      throw new Error(`RSS parsing failed: ${data.message}`);
-    }
-    
-    const articles = data.items.map(item => ({
-      headline: item.title,
-      summary: item.description.replace(/<[^>]*>/g, '').substring(0, 200),
-      source: 'BBC Business',
-      link: item.link,
-      date: item.pubDate,
-      timeAgo: getTimeAgo(item.pubDate)
-    }));
+    // Flatten array and sort by date (newest first)
+    const articles = allArticles
+      .flat()
+      .filter(article => article.headline)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 15); // Return top 15 most recent
     
     res.status(200).json({ articles });
     
