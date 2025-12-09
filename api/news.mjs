@@ -129,26 +129,35 @@ export default async function handler(req, res) {
 
 async function getAIScore(article) {
   try {
-    const prompt = `You are filtering news for institutional investors. Rate this headline from 1-10 based on MARKET IMPACT.
+    const prompt = `Rate this business news headline from 1-10 for professional investors and business executives.
 
-SCORE 8-10 ONLY FOR:
-- Major S&P 500 earnings surprises
-- Multi-billion dollar M&A or IPOs
-- Fed rate decisions or policy changes
-- Key economic data: Jobs, GDP, inflation
-- Major CEO departures at large companies
-- Significant regulatory changes
-- Product launches affecting major company valuations
+HIGH SCORES (7-10):
+- Earnings reports, revenue/profit announcements
+- M&A deals, acquisitions, IPOs
+- Fed decisions, interest rates, monetary policy
+- Economic indicators: jobs, GDP, inflation, manufacturing
+- Major product launches or tech announcements
+- CEO/executive changes at publicly traded companies
+- Regulatory changes affecting markets
+- Market-moving geopolitical events
+- Industry trends and disruptions
 
-SCORE 1-4 FOR:
-- SEC filings without context
-- Small company executive changes
-- Personal finance advice
-- Conference transcripts
-- Minor partnerships
-- Analyst opinions
+MEDIUM SCORES (5-6):
+- Company partnerships or collaborations
+- Analyst ratings and price targets
+- Quarterly guidance updates
+- Executive interviews with news value
+- Industry conference announcements
+
+LOW SCORES (1-4):
+- Personal finance tips for individuals
+- "How-to" articles for consumers
+- Opinion pieces without hard news
+- Individual lifestyle stories
+- Minor press releases
 
 Headline: "${article.title}"
+Source: ${article.source}
 
 Return ONLY a number 1-10.`;
     
@@ -173,13 +182,13 @@ Return ONLY a number 1-10.`;
     
     const data = await response.json();
     const scoreText = data.content[0].text.trim();
-    const score = parseInt(scoreText.match(/\d+/)?.[0] || '3');
+    const score = parseInt(scoreText.match(/\d+/)?.[0] || '5');
     
     return Math.min(Math.max(score, 1), 10);
     
   } catch (error) {
     console.error('AI scoring error:', error);
-    return 3;
+    return 5;
   }
 }
 
