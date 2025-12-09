@@ -83,8 +83,8 @@ export default async function handler(req, res) {
         
         const aiScore = await getAIScore(article);
         
-        // Only include if AI score is 6 or higher
-        if (aiScore < 6) {
+        // Only include if AI score is 5 or higher
+        if (aiScore < 5) {
           return null;
         }
         
@@ -129,37 +129,35 @@ export default async function handler(req, res) {
 
 async function getAIScore(article) {
   try {
-    const prompt = `Rate this business news headline from 1-10 for professional investors and business executives.
+    const prompt = `Rate this business news headline from 1-10 for a financial news website.
 
-HIGH SCORES (7-10):
-- Earnings reports, revenue/profit announcements
-- M&A deals, acquisitions, IPOs
-- Fed decisions, interest rates, monetary policy
-- Economic indicators: jobs, GDP, inflation, manufacturing
-- Major product launches or tech announcements
-- CEO/executive changes at publicly traded companies
-- Regulatory changes affecting markets
-- Market-moving geopolitical events
-- Industry trends and disruptions
+SCORE 7-10: Major business news
+- Earnings, revenue, profit reports
+- M&A, acquisitions, IPOs
+- Fed policy, interest rates
+- Jobs, GDP, inflation data
+- Product launches from major companies
+- Executive changes
+- Regulatory news
+- Market movements
 
-MEDIUM SCORES (5-6):
-- Company partnerships or collaborations
-- Analyst ratings and price targets
-- Quarterly guidance updates
-- Executive interviews with news value
-- Industry conference announcements
+SCORE 5-6: Standard business content
+- Company announcements
+- Analyst opinions
+- Partnership deals
+- Industry news
+- Conference presentations
+- Executive interviews
 
-LOW SCORES (1-4):
-- Personal finance tips for individuals
-- "How-to" articles for consumers
-- Opinion pieces without hard news
-- Individual lifestyle stories
-- Minor press releases
+SCORE 1-4: Filter out
+- Personal finance advice for individuals
+- "How to invest" articles
+- Lifestyle content
+- Celebrity business stories
 
 Headline: "${article.title}"
-Source: ${article.source}
 
-Return ONLY a number 1-10.`;
+Return ONLY a number 1-10. Be generous with scores.`;
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -182,13 +180,13 @@ Return ONLY a number 1-10.`;
     
     const data = await response.json();
     const scoreText = data.content[0].text.trim();
-    const score = parseInt(scoreText.match(/\d+/)?.[0] || '5');
+    const score = parseInt(scoreText.match(/\d+/)?.[0] || '6');
     
     return Math.min(Math.max(score, 1), 10);
     
   } catch (error) {
     console.error('AI scoring error:', error);
-    return 5;
+    return 6;
   }
 }
 
