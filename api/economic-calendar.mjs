@@ -6,6 +6,8 @@ export default async function handler(req, res) {
     // Get today's date in YYYY-MM-DD format
     const today = new Date().toISOString().split('T')[0];
     
+    console.log('Fetching events for date:', today);
+    
     // Fetch economic calendar from FCS API
     const response = await fetch(
       `https://fcsapi.com/api-v3/forex/economy_cal?access_key=${process.env.FCS_API_KEY}&from=${today}&to=${today}`
@@ -17,48 +19,46 @@ export default async function handler(req, res) {
     
     const data = await response.json();
     
-    if (!data.response || data.status === false) {
-      throw new Error('Invalid FCS API response');
+    console.log('FCS API response:', JSON.stringify(data).substring(0, 500));
+    
+    if (!data.response) {
+      // Return empty if no events
+      res.status(200).json({ events: [], raw: data });
+      return;
     }
     
-    // Filter and format the events
-    const events = data.response
-      .filter(event => {
-        // Only show high and medium importance events
-        return event.impact === 'High' || event.impact === 'Medium';
-      })
-      .map(event => ({
-        time: formatTime(event.date),
-        title: event.title,
-        country: event.country,
-        importance: event.impact.toLowerCase(),
-        forecast: event.forecast || '—',
-        previous: event.previous || '—',
-        actual: event.actual || '—'
-      }))
-      .sort((a, b) => {
-        // Sort by time
-        const timeA = new Date('1970/01/01 ' + a.time);
-        const timeB = new Date('1970/01/01 ' + b.time);
-        return timeA - timeB;
-      });
+    // Show ALL events (remove filter temporarily)
+    const events = data.response.map(event => ({
+      time: formatTime(event.date),
+      title: event.title || event.event || 'Unknown Event',
+      country: event.country,
+      importance: event.impact ? event.impact.toLowerCase() : 'low',
+      forecast: event.forecast || '—',
+      previous: event.previous || '—',
+      actual: event.actual || '—'
+    }));
     
-    res.status(200).json({ events });
+    console.log(`Found ${events.length} events`);
+    
+    res.status(200).json({ events, count: events.length });
     
   } catch (error) {
     console.error('Economic calendar error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, details: error.stack });
   }
 }
 
 function formatTime(dateString) {
-  // Convert "2025-12-08 08:30:00" to "8:30 AM EST"
-  const date = new Date(dateString);
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  const displayMinutes = minutes.toString().padStart(2, '0');
-  
-  return `${displayHours}:${displayMinutes} ${ampm} EST`;
+  try {
+    const date = new Date(dateString);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    const displayMinutes = minutes.toString().padStart(2, '0');
+    
+    return `${displayHours}:${displayMinutes} ${ampm} EST`;
+  } catch (e) {
+    return dateString;
+  }
 }
