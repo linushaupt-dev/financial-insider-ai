@@ -5,9 +5,7 @@ const feeds = [
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147', name: 'CNBC' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.marketwatch.com/rss/topstories', name: 'MarketWatch' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.ft.com/?format=rss', name: 'Financial Times' },
-  { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.investing.com/rss/news.rss', name: 'Investing.com' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://seekingalpha.com/feed.xml', name: 'Seeking Alpha' },
-  { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.fool.com/feeds/index.aspx', name: 'Motley Fool' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.businessinsider.com/rss', name: 'Business Insider' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://fortune.com/feed', name: 'Fortune' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.forbes.com/real-time/feed2/', name: 'Forbes' },
@@ -18,13 +16,13 @@ const feeds = [
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.thestreet.com/feeds/news/markets.xml', name: 'The Street' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.nasdaq.com/feed/rssoutbound', name: 'Nasdaq' },
   { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.benzinga.com/feed', name: 'Benzinga' },
-  { url: 'https://api.rss2json.com/v1/api.json?rss_url=http://rss.cnn.com/rss/money_latest.rss', name: 'CNN Business' }
+  { url: 'https://api.rss2json.com/v1/api.json?rss_url=http://rss.cnn.com/rss/money_latest.rss', name: 'CNN Business' },
+  { url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.reuters.com/rssFeed/businessNews', name: 'Reuters' }
 ];
 
 const sourceReputation = {
   'Wall Street Journal': 10,
   'Financial Times': 10,
-  'Bloomberg': 10,
   'Reuters': 9,
   'The Economist': 9,
   'Barrons': 9,
@@ -37,9 +35,7 @@ const sourceReputation = {
   'The Street': 6,
   'Benzinga': 6,
   'Nasdaq': 6,
-  'Investing.com': 6,
   'CNN Business': 6,
-  'Motley Fool': 5,
   'BBC Business': 7
 };
 
@@ -78,6 +74,8 @@ export default async function handler(req, res) {
     const results = await Promise.all(feedPromises);
     results.forEach(articles => allArticles.push(...articles));
     
+    console.log(`Fetched ${allArticles.length} total articles`);
+    
     const scoredArticles = await Promise.all(
       allArticles.map(async (article) => {
         const recencyScore = calculateRecencyScore(article.pubDate);
@@ -114,9 +112,12 @@ export default async function handler(req, res) {
       .sort((a, b) => b.score - a.score)
       .slice(0, 50);
     
+    console.log(`Returning ${topArticles.length} filtered articles`);
+    
     res.status(200).json({
       articles: topArticles,
       total: allArticles.length,
+      filtered: topArticles.length,
       sources: feeds.length
     });
     
@@ -128,36 +129,28 @@ export default async function handler(req, res) {
 
 async function getAIScore(article) {
   try {
-    const prompt = `You are filtering news for institutional investors and Fortune 500 executives. Rate this headline's BUSINESS IMPACT from 1-10.
+    const prompt = `You are filtering news for institutional investors. Rate this headline from 1-10 based on MARKET IMPACT.
 
-ONLY GIVE HIGH SCORES (8-10) FOR:
-- Major earnings beats/misses from S&P 500 companies
-- Billion-dollar M&A deals or IPOs
-- Federal Reserve rate decisions or major policy changes
-- Critical economic data: Jobs report, GDP, CPI/inflation
-- Regulatory changes affecting entire industries
-- CEO changes at major publicly traded companies
-- Significant product launches affecting market cap (Apple, Tesla, etc)
-- Geopolitical events directly moving markets
-- Major bankruptcies or restructurings of notable companies
+SCORE 8-10 ONLY FOR:
+- Major S&P 500 earnings surprises
+- Multi-billion dollar M&A or IPOs
+- Fed rate decisions or policy changes
+- Key economic data: Jobs, GDP, inflation
+- Major CEO departures at large companies
+- Significant regulatory changes
+- Product launches affecting major company valuations
 
-GIVE LOW SCORES (1-3) TO:
-- SEC Form 8K filings (unless tied to major news)
-- Executive appointments at small/unknown companies
-- Personal finance advice or "how-to" articles
-- Individual stock tips or portfolio advice
-- Lifestyle or human interest stories
-- Opinion pieces without hard news
-- Minor product updates
-- Conference presentations or earnings call transcripts without context
-- "Flow traders" or personal trading strategies
+SCORE 1-4 FOR:
+- SEC filings without context
+- Small company executive changes
+- Personal finance advice
+- Conference transcripts
+- Minor partnerships
+- Analyst opinions
 
 Headline: "${article.title}"
-Source: ${article.source}
 
-Question: Would this headline appear on the front page of the Wall Street Journal or Bloomberg Terminal? Does it affect billions in market cap?
-
-Return ONLY a number 1-10. Be extremely harsh.`;
+Return ONLY a number 1-10.`;
     
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
