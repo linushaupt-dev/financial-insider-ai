@@ -3,47 +3,38 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
   try {
-    // Crypto symbols that work with Yahoo
-    const cryptoSymbols = ['BTC-USD', 'ETH-USD', 'XRP-USD', 'SOL-USD', 'BNB-USD', 'ADA-USD', 'DOGE-USD'];
-    // Forex ETFs (more reliable than currency pairs)
-    const forexSymbols = ['FXE', 'FXB', 'FXY', 'FXC', 'FXA', 'FXF'];
-    
-    const allSymbols = [...cryptoSymbols, ...forexSymbols].join(',');
-    
+    // Use CoinGecko API (free, no auth required)
     const response = await fetch(
-      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${allSymbols}`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Origin': 'https://finance.yahoo.com',
-          'Referer': 'https://finance.yahoo.com/'
-        }
-      }
+      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,ripple,solana,binancecoin,cardano,dogecoin&vs_currencies=usd&include_24hr_change=true'
     );
     
     if (!response.ok) {
-      throw new Error(`Yahoo API returned ${response.status}`);
+      throw new Error(`CoinGecko API returned ${response.status}`);
     }
     
     const data = await response.json();
     
-    if (!data.quoteResponse || !data.quoteResponse.result) {
-      throw new Error('Invalid response structure');
-    }
+    const cryptoMap = {
+      'bitcoin': { symbol: 'BTC', name: 'Bitcoin' },
+      'ethereum': { symbol: 'ETH', name: 'Ethereum' },
+      'ripple': { symbol: 'XRP', name: 'XRP' },
+      'solana': { symbol: 'SOL', name: 'Solana' },
+      'binancecoin': { symbol: 'BNB', name: 'BNB' },
+      'cardano': { symbol: 'ADA', name: 'Cardano' },
+      'dogecoin': { symbol: 'DOGE', name: 'Dogecoin' }
+    };
     
-    const results = data.quoteResponse.result.map(item => ({
-      symbol: item.symbol,
-      price: item.regularMarketPrice || 0,
-      change: item.regularMarketChange || 0,
-      changePercent: item.regularMarketChangePercent || 0
+    const results = Object.entries(data).map(([id, values]) => ({
+      symbol: cryptoMap[id].symbol,
+      name: cryptoMap[id].name,
+      price: values.usd,
+      changePercent: values.usd_24h_change
     }));
     
     res.status(200).json({ data: results });
     
   } catch (error) {
-    console.error('Forex/Crypto API error:', error.message);
+    console.error('Crypto API error:', error.message);
     res.status(500).json({ error: 'Failed to fetch data', details: error.message });
   }
 }
