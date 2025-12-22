@@ -5,10 +5,3 @@
     "rss-parser": "^3.13.0"
   }
 }
-```
-
-5. Click **"Commit changes"**
-
-Vercel will automatically redeploy with the new dependency. Wait a minute, then test the URL again:
-```
-https://financial-insider-ai.vercel.app/api/world-news?country=Germany
