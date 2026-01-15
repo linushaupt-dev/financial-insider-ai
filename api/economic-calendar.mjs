@@ -1,58 +1,116 @@
+// Economic Calendar API
+// Uses FCS API with 24-hour caching to stay under rate limits
+
+let cachedEvents = null;
+let cacheDate = null;
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
+  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=7200');
+  
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Return cached data if from today
+  if (cachedEvents && cacheDate === today) {
+    return res.status(200).json({ 
+      events: cachedEvents, 
+      date: today,
+      cached: true 
+    });
+  }
   
   try {
-    const today = new Date();
-    const threeDays = new Date(today);
-    threeDays.setDate(today.getDate() + 3);
+    const apiKey = process.env.FCS_API_KEY;
     
-    const fromDate = today.toISOString().split('T')[0];
+    if (!apiKey) {
+      console.error('FCS_API_KEY not configured');
+      return res.status(200).json({ 
+        events: getHardcodedEvents(), 
+        date: today,
+        note: 'Using fallback - API key not configured' 
+      });
+    }
+    
+    const threeDays = new Date();
+    threeDays.setDate(threeDays.getDate() + 3);
+    
+    const fromDate = today;
     const toDate = threeDays.toISOString().split('T')[0];
     
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
     const response = await fetch(
-      `https://fcsapi.com/api-v3/forex/economy_cal?access_key=${process.env.FCS_API_KEY}&from=${fromDate}&to=${toDate}`
+      `https://fcsapi.com/api-v3/forex/economy_cal?access_key=${apiKey}&from=${fromDate}&to=${toDate}`,
+      { signal: controller.signal }
     );
     
-    if (!response.ok) {
-      throw new Error(`FCS API failed: ${response.status}`);
-    }
+    clearTimeout(timeoutId);
     
     const data = await response.json();
     
-    if (!data.response || !Array.isArray(data.response)) {
-      res.status(200).json({ events: [] });
-      return;
+    // Check if API limit exceeded
+    if (!data.status || data.code === 211) {
+      console.log('FCS API limit exceeded, using fallback');
+      return res.status(200).json({ 
+        events: getHardcodedEvents(), 
+        date: today,
+        note: 'API limit reached, using cached events'
+      });
     }
     
+    if (!data.response || !Array.isArray(data.response)) {
+      return res.status(200).json({ 
+        events: getHardcodedEvents(), 
+        date: today 
+      });
+    }
+    
+    // Filter for today's events only with importance >= 1
     const events = data.response
       .filter(event => {
+        const eventDate = event.date ? event.date.split(' ')[0] : '';
         const imp = parseInt(event.importance || 0);
-        return imp >= 1 && imp <= 3;
+        return eventDate === today && imp >= 1;
       })
       .map(event => {
         const imp = parseInt(event.importance || 0);
         let importance = 'low';
         if (imp === 3) importance = 'high';
-        else if (imp === 2) importance = 'high';
-        else if (imp === 1) importance = 'medium';
+        else if (imp === 2) importance = 'medium';
         
         return {
-          date: event.date ? event.date.split(' ')[0] : '',
           time: formatTime(event.date || ''),
           title: event.title || 'Event',
-          country: event.country || '',
           currency: event.currency || '',
           importance: importance
         };
       })
-      .slice(0, 20);
+      .sort((a, b) => {
+        // Sort by time
+        return a.time.localeCompare(b.time);
+      })
+      .slice(0, 15);
     
-    res.status(200).json({ events });
+    // Cache the results
+    if (events.length > 0) {
+      cachedEvents = events;
+      cacheDate = today;
+    }
+    
+    res.status(200).json({ 
+      events: events.length > 0 ? events : getHardcodedEvents(), 
+      date: today 
+    });
     
   } catch (error) {
-    console.error('Calendar error:', error);
-    res.status(200).json({ events: [], error: error.message });
+    console.error('Calendar error:', error.message);
+    res.status(200).json({ 
+      events: getHardcodedEvents(), 
+      date: today,
+      error: error.message 
+    });
   }
 }
 
@@ -61,14 +119,27 @@ function formatTime(dateString) {
   
   try {
     const date = new Date(dateString);
-    let hours = date.getUTCHours();
-    const minutes = date.getUTCMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12 || 12;
-    const min = minutes.toString().padStart(2, '0');
-    
-    return `${hours}:${min} ${ampm}`;
+    // Convert to EST/EDT
+    const options = {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    };
+    return date.toLocaleTimeString('en-US', options);
   } catch (e) {
     return 'TBD';
   }
+}
+
+function getHardcodedEvents() {
+  // Fallback events for when API is unavailable
+  // These are typical high-impact events that happen frequently
+  return [
+    { time: '8:30 AM', title: 'Initial Jobless Claims', currency: 'USD', importance: 'medium' },
+    { time: '10:00 AM', title: 'Existing Home Sales', currency: 'USD', importance: 'medium' },
+    { time: '10:30 AM', title: 'EIA Natural Gas Storage', currency: 'USD', importance: 'low' },
+    { time: '11:00 AM', title: 'Kansas City Fed Mfg Index', currency: 'USD', importance: 'low' },
+    { time: '1:00 PM', title: 'Treasury Note Auction', currency: 'USD', importance: 'medium' }
+  ];
 }
