@@ -1,5 +1,5 @@
-// Economic Calendar API using Financial Modeling Prep
-// Caches data for 24 hours to minimize bandwidth usage
+// Economic Calendar API using FCS API
+// Caches data for 24 hours to minimize API usage
 
 let cachedEvents = null;
 let cacheDate = null;
@@ -21,10 +21,10 @@ export default async function handler(req, res) {
   }
   
   try {
-    const apiKey = process.env.FMP_API_KEY;
+    const apiKey = process.env.FCS_API_KEY;
     
     if (!apiKey) {
-      console.error('FMP_API_KEY not configured');
+      console.error('FCS_API_KEY not configured');
       return res.status(200).json({ 
         events: getHardcodedEvents(), 
         date: today,
@@ -42,43 +42,48 @@ export default async function handler(req, res) {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     
     const response = await fetch(
-      `https://financialmodelingprep.com/api/v3/economic_calendar?from=${fromDate}&to=${toDateStr}&apikey=${apiKey}`,
+      `https://fcsapi.com/api-v3/forex/economy_cal?access_key=${apiKey}&from=${fromDate}&to=${toDateStr}`,
       { signal: controller.signal }
     );
     
     clearTimeout(timeoutId);
     
-    if (!response.ok) {
-      throw new Error(`FMP API returned ${response.status}`);
-    }
-    
     const data = await response.json();
     
-    if (!Array.isArray(data) || data.length === 0) {
+    // Check if API limit exceeded
+    if (!data.status || data.code === 211) {
+      console.log('FCS API limit exceeded, using fallback');
+      return res.status(200).json({ 
+        events: getHardcodedEvents(), 
+        date: today,
+        note: 'API limit reached, using cached events'
+      });
+    }
+    
+    if (!data.response || !Array.isArray(data.response)) {
       return res.status(200).json({ 
         events: getHardcodedEvents(), 
         date: today 
       });
     }
     
-    // Filter for today's events and high/medium impact
-    const events = data
+    // Filter for today's events with importance >= 1
+    const events = data.response
       .filter(event => {
         const eventDate = event.date ? event.date.split(' ')[0] : '';
-        // Filter for today and important events (impact: Low, Medium, High)
-        const impact = (event.impact || '').toLowerCase();
-        return eventDate === today && (impact === 'high' || impact === 'medium' || impact === 'low');
+        const imp = parseInt(event.importance || 0);
+        return eventDate === today && imp >= 1;
       })
       .map(event => {
-        const impact = (event.impact || '').toLowerCase();
+        const imp = parseInt(event.importance || 0);
         let importance = 'low';
-        if (impact === 'high') importance = 'high';
-        else if (impact === 'medium') importance = 'medium';
+        if (imp === 3) importance = 'high';
+        else if (imp === 2) importance = 'medium';
         
         return {
           time: formatTime(event.date || ''),
-          title: event.event || 'Economic Event',
-          currency: event.currency || event.country || '',
+          title: event.title || 'Economic Event',
+          currency: event.currency || '',
           importance: importance
         };
       })
@@ -111,7 +116,6 @@ function formatTime(dateString) {
   
   try {
     const date = new Date(dateString);
-    // Convert to EST/EDT
     const options = {
       hour: 'numeric',
       minute: '2-digit',
@@ -125,7 +129,6 @@ function formatTime(dateString) {
 }
 
 function getHardcodedEvents() {
-  // Fallback events for when API is unavailable
   return [
     { time: '8:30 AM', title: 'Initial Jobless Claims', currency: 'USD', importance: 'medium' },
     { time: '10:00 AM', title: 'Existing Home Sales', currency: 'USD', importance: 'medium' },
